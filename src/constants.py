@@ -11,11 +11,8 @@ DUMMY_PERSONAL_INFO_MALE = {
     "whatsapp": "https://wa.me/aristaniy93",
     "other_site": "https://www.aristaniy93.ru",
     "habr_career": "https://career.habr.ru/aristaniy93",
-    "skype": "aristaniy93",
     "linkedin": "https://linkedin.com/in/aristaniy-zvyagoltsev-f3e57c712",
     "github": "https://github.com/aristaniy93",
-    "moi_krug": "https://moi-krug.ru/aristaniy93",
-    "livejournal": "https://aristaniy93.livejournal.com",
 }
 
 # Личные данные-пустышки для анонимизации (женский пол)
@@ -31,18 +28,9 @@ DUMMY_PERSONAL_INFO_FEMALE = {
     "whatsapp": "https://wa.me/aristaniya93",
     "other_site": "https://www.aristaniya93.ru",
     "habr_career": "https://career.habr.ru/aristaniya93",
-    "skype": "aristaniya93",
     "linkedin": "https://linkedin.com/in/aristaniya-zvyagoltseva-f3e57c712",
     "github": "https://github.com/aristaniya93",
-    "moi_krug": "https://moi-krug.ru/aristaniya93",
-    "livejournal": "https://aristaniya93.livejournal.com",
 }
-
-# Адрес чата в Telegram и ID соответствующих тем для отправки
-TG_CHAT_ID = "@xx_feedback"
-TG_ERR_TOPIC_ID = 5
-TG_CAPTCHA_TOPIC_ID = 17
-TG_REPORT_TOPIC_ID = 344
 
 # Пути к файлам логов и настроек
 SECRETS_FILE = "data_folder/secrets/secrets.yaml"
@@ -50,6 +38,7 @@ SEARCH_CONFIG_FILE = "data_folder/search_config/search_config.yaml"
 SEARCH_CONFIG_FILE_TMP = "data_folder/output/search_config_tmp.yaml"
 LAST_RUN_FILE = "data_folder/output/last_run.yaml"
 LOGS_DIR = "logs"
+BROWSER_STORAGE_STATE = "data_folder/browser_session/hh_state.json"
 
 # Словарь для подсчета стоимости запроса к модели
 PRICE_DICT = {
