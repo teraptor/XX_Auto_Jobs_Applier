@@ -56,10 +56,8 @@ Determine if the candidate is suitable for this job based on the provided inform
 - If the job aligns with one or more of the candidate’s interests, add 10 point to the overall score.
 - If vacancy doesn't match one or more of search parameters, subtract 20 points from the overall score for each search parameter that it doesn't match.
 - Provide a brief justification for the score, indicating which requirements are met and which are not.
-Output format (strictly follow this format):
-Score: [numeric score]
-Reasoning: [brief explanation]
-Do not include anything else in the response beyond the score and reasoning.
+##Output Format##
+{format_instructions}
 """
 
 # Промпт для определения степени интересности резюме с точки зрения его улучшения
@@ -96,12 +94,32 @@ This feedback will help us identify candidates who could be highly employable on
 - Assign a resume quality score from 1 to 10, where 1 means the resume is unprofessionally prepared and barely reflects the candidate’s qualifications and experience, and 10 means the resume is professionally crafted and fully reflects the candidate’s qualifications and experience.
 - Evaluate the candidate’s potential solvency based on their current profession, experience, qualifications, and desired salary.
 - Assign a solvency score from 1 to 10, where 1 means the candidate likely has no disposable income, and 10 means the candidate is fully solvent and likely has a significant amount of disposable income.
-Output format (strictly follow this format):
-Demand Score: [numeric job market demand score from 1 to 10]
-Resume Score: [numeric resume quality score from 1 to 10]
-Solvency Score: [numeric potential solvency score from 1 to 10]
-Reasoning: [brief explanation of all three scores]
-Do not include anything else in the response beyond the three scores and reasoning.
+##Output Format##
+{format_instructions}
+"""
+
+# Prompt for extracting all skills required for a vacancy
+extract_skills_from_vacancy_template = """
+Ты эксперт в области HR и анализа вакансий. Извлеки все навыки, необходимые для этой роли, из описания вакансии.
+
+## Инструкции
+- Включай как hard skills (например, языки программирования, фреймворки, инструменты, платформы, методологии), так и soft skills (например, коммуникабельность, лидерство, решение проблем).
+- Приводи формулировки к каноническому виду; избегай дубликатов.
+- Навыки должны быть атомарными (например, "python", "react", "project management", "sql", "docker").
+- Исключай льготы, бонусы, внутренние инструменты компании и общие фразы, не относящиеся к навыкам.
+- Если упоминается семейство технологий (например, "облачные платформы"), включай конкретные, которые указаны (например, "aws", "gcp", "azure").
+
+## Формат вывода (строго придерживайся этого формата)
+- Верни ТОЛЬКО последовательность строк, без комментариев, без оформления в виде кода, без дополнительного текста.
+- soft skills должны быть НА РУССКОМ ЯЗЫКЕ
+- Последовательность должна быть разделена запятыми.
+- Если есть возможность у
+- Пример формата: "python, aws, коммуникабельность"
+
+## Описание вакансии
+```
+{job_description}
+```
 """
 
 # Промпт для ответа на текстовые вопросы
@@ -197,13 +215,8 @@ No info
 parse_contacts_template = """
 You are an expert in career development, recruitment, and personnel management with extensive experience in crafting, analyzing, and optimizing resumes.
 Parse the provided resume and extract the contact information about user's telegram, email, phone number, and LinkedIn profile.
-Output format (strictly follow this format):
-Telegram: [Telegram username or link, if available, otherwise "No info"]
-Whatsapp: [WhatsApp number, if available, otherwise "No info"]
-Email: [email address, if available, otherwise "No info"]
-Phone: [phone number, if available, otherwise "No info"]
-LinkedIn: [LinkedIn profile link, if available, otherwise "No info"]
-Do not include anything else in the response beyond the score and reasoning.
+##Output Format##
+{format_instructions}
 
 ##Resume##
 ```
@@ -318,24 +331,6 @@ resume_improve = """
 Обратная связь должна быть структурирована таким образом, чтобы кандидат мог легко внедрить предложенные изменения.
 """
 
-parse_resume_search_params_template = """
-Ты эксперт в области построения карьеры, и по подбору и управлению персоналом с обширным опытом в составлении, анализе и оптимизации резюме.
-Твоя задача — проанализировать вакансию и выявить, какие поисковые параметры требуется задать на сайте hh.ru для поиска резюме, соответствующих данной вакансии.
-##Текст вакансии##
-{vacancy}
-Формат вывода (строго следуй этому формату):
-Keywords: [ключевые слова, по которым будут искать резюме (например Программист Python, Строитель, Сварщик, Водитель такси и т.д.)]
-Education: [образование кандидата, выбери только один из вариантов (Не важно, Среднее, Среднее специальное, Неоконченное высшее, Высшее, Магистр, Кандидат наук, Доктор наук)]
-Experience: [опыт кандидата, выбери только один из вариантов (Не важно, Нет опыта, 1-3 года, 3-6 лет, Более 6 лет)]
-Employment Type: [тип занаятости, выбери только один из вариантов (Не важно, Полная занятость, Частичная занятость, Разовое задание, Волонтерство, Стажировка)]
-Schedule: [график работы, выбери только один из вариантов (Не важно, Полный день, Сменный график, Гибкий график, Удаленная работа, Вахтовый метод)]
-Salary From: [нижняя сумма зарплатной вилки, либо «Не важно», если нет информации]
-Salary To: [верхняя сумма зарплатной вилки, либо «Не важно», если нет информации]
-Driver License: [водительские права, выбери только один из вариантов (Не важно, Есть)]
-Area: [город или регион, в котором должен находиться кандидат, либо напиши «Не важно», если нет информации]
-Не выводи ничего другого в ответе, кроме перечисленных в формате вывода параметров поиска.
-"""
-
 # Промпт для анализа информации о вакансии и выдачи краткого структурированного заключения о ней
 summarize_prompt_template = """
 Ты опытный эксперт в области управления персоналом, твоя задача — выявить и описать ключевые навыки и требования, необходимые для данной должности.
@@ -366,436 +361,3 @@ summarize_prompt_template = """
 ```
 ---
 # Результат анализа данной вакансии:"""
-
-# Промпты для написания резюме
-prompt_header = (
-    """
-Ты эксперт по подбору персонала и составлению резюме, совместимых с системами ATS (система отслеживания кандидатов).
-Твоя задача — создать профессиональный и аккуратный заголовок для резюме.
-Заголовок должен включать:
-1. **Контактную информацию**: Полное имя, город и страну, номер телефона, адрес электронной почты, профиль LinkedIn и профиль GitHub.
-2. **Форматирование**: Убедись, что контактные данные представлены четко и легко читаются.
-##Дополнительные правила##
-- Если какой-либо из полей контактной информации (например, профиль LinkedIn или GitHub) отсутствует (т.е. указано как `None`), не включай его в заголовок.
-- УЧИТЫВАЙ, что пол пользователя — {sex}.
-##Информация о пользователе##
-```
-{personal_information}\n
-"""
-    + f"{prompt_header_template}\n```"
-)
-
-prompt_education = (
-    """
-Ты эксперт по подбору персонала и составлению резюме, совместимых с ATS (система отслеживания кандидатов).
-Твоя задача — описать образовательный бэкграунд для резюме, чтобы он соответствовал предоставленному описанию вакансии.
-Для каждой записи об образовании необходимо указать:
-1. **Название учебного заведения и его местоположение**: Уточни название университета или учебного заведения и его местоположение.
-2. **Степень и направление обучения**: Четко укажи полученную степень и специальность.
-3. **Релевантные учебные курсы**: Перечисли ключевые курсы, чтобы подчеркнуть свои академические сильные стороны. Если информация о курсах отсутствует, пропусти этот раздел в шаблоне.
-##Дополнительные правила##
-- УЧИТЫВАЙ, что пол пользователя — {sex}.
-##Информация о пользователе##
-  {education_details}
-##Описание вакансии##
-  {job_description}
-"""
-    + prompt_education_template
-)
-
-
-prompt_working_experience = (
-    """
-Ты эксперт по подбору персонала и составлению резюме, совместимых с ATS (система отслеживания кандидатов).
-Твоя задача — подробно описать опыт работы для резюме, чтобы он соответствовал предоставленному описанию вакансии.
-Для каждой записи о работе необходимо указать:
-    1. **Название компании**: Укажи название компании.
-    2. **Должность**: Четко укажи свою должность.
-    3. **Даты работы**: Укажи даты начала и окончания работы.
-    4. **Обязанности и достижения**: Опиши ключевые обязанности и значимые достижения, делая акцент на измеримых результатах и конкретных вкладах (напирмер ускорил(а) деплой системы на 25% или повысил(а) рентабельность на 10%)
-Убедись, что описания подчеркивают релевантный опыт и соответствуют описанию вакансии.
-##Информация о пользователе##
-  {experience_details}
-##Описание вакансии##
-  {job_description}
-##Дополнительные правила##
-  - Если есть информация о местоположении компании - укажи ее, в противном случае не указывай и удали соответствующую строку из шаблона (<span class="entry-location">[Location]</span>)
-  - Если какие-либо детали опыта работы (например, местоположение компании, обязанности, достижения) отсутствуют (т.е. указано None), пропусти соответствующие разделы при заполнении шаблона.
-  - УЧИТЫВАЙ, что пол пользователя — {sex}.
-  - УЧИТЫВАЙ, что при перечислении любых своих достижений лучше использовать в начале предложения глагол в прошедшем времени вместо существительного.
-    Например 'разработал приложение' вместо 'разработка приложения', 'оптимизировал код' вместо 'оптимизация кода', 'создал базу данных' вместо 'создание базы данных'.
-  - При описании пользы от достижений вместо `что <глагол>` используй словосочетание `что позволило <глагол>`, например 'что позволило увеличить' вместо 'что увеличило' или же используй деепричастия, например 'увеличив', 'достигнув' и т.д.
-"""
-    + prompt_working_experience_template
-)
-
-
-prompt_side_projects = (
-    """
-Ты эксперт по подбору персонала и составлению резюме, совместимых с ATS (система отслеживания кандидатов).
-Твоя задача — выделить значимые проекты пользователя, соответствующие предоставленному описанию вакансии.
-Для каждого проекта необходимо указать:
-1. **Название проекта и ссылка**: Укажи название проекта и добавь ссылку на репозиторий GitHub или страницу проекта.
-2. **Детали проекта**: Опиши значимые достижения или признание, связанные с проектом, например, количество звезд на GitHub или отзывы сообщества.
-3. **Технический вклад**: Подчеркни свой конкретный вклад и используемые технологии в рамках проекта.
-Убедись, что описания проектов демонстрируют твои навыки и достижения, релевантные для данной вакансии.
-##Информация о проектах пользователя##
-  {projects}
-##Описание вакансии##
-  {job_description}
-##Дополнительные правила##
-- Если какая-либо информация о проекте (например, ссылка или достижения) отсутствует (т.е. указано `None`), пропусти эти разделы при заполнении шаблона.
-- УЧИТЫВАЙ, что пол пользователя — {sex}.
-- Не нужно писать, какие из твоих навыков позволили создать тот или иной проект и каким требованиям вакансии они соотвтетствуют.
-"""
-    + prompt_side_projects_template
-)
-
-
-prompt_achievements = (
-    """
-Ты эксперт по подбору персонала и составлению резюме, совместимых с ATS (система отслеживания кандидатов).
-Твоя задача — перечислить значимые достижения, соответствующие предоставленному описанию вакансии.
-Для каждого достижения укажи:
-1. **Награда или признание**: Чётко укажи название награды, признания, стипендии или почётного звания.
-2. **Описание**: Дай краткое описание достижения.
-Убедись, что достижения представлены в понятном виде и подчеркивают твои навыки.
-##Информация о достижениях пользователя##
-  {achievements}
-##Описание вакансии##
-  {job_description}
-##Дополнительные правила##
-- Если какая-либо информация о достижении (например, сертификаты или описания) отсутствует (т.е. указано `None`), пропусти эти разделы при заполнении шаблона.
-- УЧИТЫВАЙ, что пол пользователя — {sex}.
-- УЧИТЫВАЙ, что при перечислении любых своих достижений лучше использовать в начале предложения глагол в прошедшем времени вместо существительного.
-  Например 'разработал приложение' вместо 'разработка приложения', 'оптимизировал код' вместо 'оптимизация кода', 'создал базу данных' вместо 'создание базы данных'.
-- Не нужно писать, о чем свидетельствует то или иное достижение или какие из твоих навыков позволили его достичь.
-"""
-    + prompt_achievements_template
-)
-
-
-prompt_certifications = (
-    """
-Ты эксперт по подбору персонала и составлению резюме, совместимых с ATS (система отслеживания кандидатов).
-Твоя задача — перечислить значимые сертификаты на основе предоставленных данных о пользователе.
-Для каждого сертификата необходимо указать:
-1. **Название сертификата**: Чётко укажи название сертификата.
-2. **Описание**: Дай краткое описание сертификата.
-Убедись, что сертификаты представлены в понятном виде и подчёркивают квалификацию пользователя.
-##Дополнительные правила##
-- Если какие-либо данные о сертификатах (например, описание) отсутствуют (т.е. указано `None`), пропусти эти разделы при заполнении шаблона.
-- УЧИТЫВАЙ, что пол пользователя — {sex}.
-##Информация о сертификатах пользователя##
-  {certifications}
-##Описание вакансии##
-  {job_description}
-"""
-    + prompt_certifications_template
-)
-
-
-prompt_additional_skills = (
-    """
-Ты эксперт по подбору персонала и составлению резюме, совместимых с ATS (система отслеживания кандидатов).
-Твоя задача — перечислить основные и дополнительные навыки, релевантные для вакансии.
-Для каждого навыка необходимо указать:
-1. **Категория навыка**: Чётко укажи категорию или тип навыка.
-2. **Конкретные навыки**: Перечисли конкретные навыки или технологии в каждой категории.
-3. **Уровень владения и опыт**: Кратко опиши опыт и уровень владения.
-Убедись, что перечисленные навыки соответствуют вакансии и точно отражают квалификацию пользователя.
-##Дополнительные правила##
-- Если какие-либо данные о навыках (например, языки, интересы, навыки) отсутствуют (т.е. указано `None`), пропусти эти разделы при заполнении шаблона.
-- УЧИТЫВАЙ, что пол пользователя — {sex}.
-- Если есть информация о языках, которыми владеет пользователь - обязательно добавь ее в список навыков
-##Информация о навыках пользователя##
-  {languages}
-  {skills}
-##Описание вакансии##
-  {job_description}
-"""
-    + prompt_additional_skills_template
-)
-
-# Далее идут старые промпты, в текущей версии приложения они не используются
-
-# Personal Information Template
-personal_information_template = """
-Answer the following question based on the provided personal information.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- If you are asked about age, keep in mind that today's date is {current_date}
-- If you have No info to answer the question or part of this question - answer 'No info'
-## Example
-My resume: John Doe, born on 01/01/1990, living in Milan, Italy.
-Question: What is your city?
- Milan
-Personal Information: {resume_section}
-Question: {question}
-"""
-
-# Legal Authorization Template
-legal_authorization_template = """
-Answer the following question based on the provided legal authorization details.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- If you have No info to answer the question or part of this question - answer 'No info'
-## Example
-My resume: Authorized to work in the EU, no US visa required.
-Question: Are you legally allowed to work in the EU?
-Yes
-Legal Authorization: {resume_section}
-Question: {question}
-"""
-
-# Work Preferences Template
-work_preferences_template = """
-Answer the following question based on the provided work preferences.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- If you have No info to answer the question or part of this question - answer 'No info'
-## Example
-My resume: Open to remote work, willing to relocate.
-Question: Are you open to remote work?
-Yes
-Work Preferences: {resume_section}
-Question: {question}
-"""
-
-# Education Details Template
-education_details_template = """
-Answer the following question based on the provided education details.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- If it seems likely that you have the experience, even if not explicitly defined, answer as if you have the experience.
-- If unsure, respond with "I have no experience with that, but I learn fast" or "Not yet, but willing to learn."
-- Keep the answer under 140 characters.
-## Example
-My resume: Bachelor's degree in Computer Science with experience in Python.
-Question: Do you have experience with Python?
-Yes, I have experience with Python.
-Education Details: {resume_section}
-Question: {question}
-"""
-
-# Experience Details Template
-experience_details_template = """
-Answer the following question based on the provided experience details.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- If it seems likely that you have the experience, even if not explicitly defined, answer as if you have the experience.
-- If unsure, respond with "I have no experience with that, but I learn fast" or "Not yet, but willing to learn."
-- Keep the answer under 140 characters.
-## Example
-My resume: 3 years as a software developer with leadership experience.
-Question: Do you have leadership experience?
-Yes, I have 3 years of leadership experience.
-Experience Details: {resume_section}
-Question: {question}
-"""
-
-# Projects Template
-projects_template = """
-Answer the following question based on the provided project details.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- If it seems likely that you have the experience, even if not explicitly defined, answer as if you have the experience.
-- If you have No info to answer the question or part of this question - answer 'No info'
-- Keep the answer under 140 characters.
-## Example
-My resume: Led the development of a mobile app, repository available.
-Question: Have you led any projects?
-Yes, led the development of a mobile app
-Projects: {resume_section}
-Question: {question}
-"""
-
-# Availability Template
-availability_template = """
-Answer the following question based on the provided availability details.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- Keep the answer under 140 characters.
-- If there is No info in resume to answer this question, answer '2 weeks' (or '2 недели' if question's language is Russian)
-- Use periods only if the answer has multiple sentences.
-## Example
-My resume: Available to start immediately.
-Question: When can you start?
-I can start immediately.
-Availability: {resume_section}
-Question: {question}
-"""
-
-# Salary Expectations Template
-salary_expectations_template = """
-Answer the following question based on the provided salary expectations.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- Keep the answer under 140 characters.
-- If you have No info to answer the question or part of this question - answer 'No info'
-- Use periods only if the answer has multiple sentences.
-## Example
-My resume: Looking for a salary in the range of 50k-60k USD.
-Question: What are your salary expectations?
-From 50000 to 60000.
-Salary Expectations: {resume_section}
-Question: {question}
-"""
-
-# Certifications Template
-certifications_template = """
-Answer the following question based on the provided certifications.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- If it seems likely that you have the experience, even if not explicitly defined, answer as if you have the experience.
-- If unsure, respond with "I have no experience with that, but I learn fast" or "Not yet, but willing to learn."
-- Keep the answer under 140 characters.
-## Example
-My resume: Certified in Project Management Professional (PMP).
-Question: Do you have PMP certification?
-Yes, I am PMP certified.
-Certifications: {resume_section}
-Question: {question}
-"""
-
-# Languages Template
-languages_template = """
-Answer the following question based on the provided language skills.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- If it seems likely that you have the experience, even if not explicitly defined, answer as if you have the experience.
-- If unsure, respond with "I have no experience with that, but I learn fast" or "Not yet, but willing to learn."
-- Keep the answer under 140 characters. Do not add any additional languages what is not in my experience
-## Example
-My resume: Fluent in Italian and English.
-Question: What languages do you speak?
-Fluent in Italian and English.
-Languages: {resume_section}
-Question: {question}
-"""
-
-# Interests Template
-interests_template = """
-Answer the following question based on the provided interests.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- Keep the answer under 140 characters.
-- If you have No info to answer the question or part of this question - answer 'No info'
-- Use periods only if the answer has multiple sentences.
-## Example
-My resume: Interested in AI and data science.
-Question: What are your interests?
-AI and data science.
-Interests: {resume_section}
-Question: {question}
-"""
-
-# Previous Job Template
-previous_job_template = """
-Answer the following question based on the previous job experience.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- If you have No info to answer the question or part of this question - answer 'No info'
-- Keep the answer under 140 characters.
-## Example
-My resume: Left previous job due to lack of career prospects
-Question: Why do you leave your previous job?
-Due to lack of career prospects
-Previous Job Details: {resume_section}
-Question: {question}
-"""
-
-# Previous Job Template
-general_knowledge_template = """
-Answer the following question based on the general knowledge of things you will encounter in your work.
-## Rules
-- Answer questions directly.
-- If question's language is Russian - answer in Russian and consider that user`s sex is {sex}. Else answer in English.
-- Answer briefly, try to keep answer length under 140 characters.
-## Example
-Question: What is the difference between linear regression and logistic regression?
-Answer: Linear regression predicts continuous values; logistic regression predicts probabilities for categorical outcomes (typically binary).
-Question: {question}
-"""
-
-
-numeric_question_template = """
-Read the following resume carefully and answer the specific questions regarding the candidate's experience with a number of years. Follow these strategic guidelines when responding:
-1. **Related and Inferred Experience:**
-   - **Similar Technologies:** If experience with a specific technology is not explicitly stated, but the candidate has experience with similar or related technologies, provide a plausible number of years reflecting this related experience. For instance, if the candidate has experience with Python and projects involving technologies similar to Java, estimate a reasonable number of years for Java.
-   - **Projects and Studies:** Examine the candidate’s projects and studies to infer skills not explicitly mentioned. Complex and advanced projects often indicate deeper expertise.
-2. **Indirect Experience and Academic Background:**
-   - **Type of University and Studies:** Consider the type of university and course followed.
-   - **Relevant thesis:** Consider the thesis of the candidate has worked. Advanced projects suggest deeper skills.
-   - **Roles and Responsibilities:** Evaluate the roles and responsibilities held to estimate experience with specific technologies or skills.
-3. **Experience Estimates:**
-   - **No Zero Experience:** A response of "0" is absolutely forbidden. If direct experience cannot be confirmed, provide a minimum of "2" years based on inferred or related experience.
-   - **For Low Experience (up to 5 years):** Estimate experience based on inferred bacherol, skills and projects, always providing at least "2" years when relevant.
-   - **For High Experience:** For high levels of experience, provide a number based on clear evidence from the resume. Avoid making inferences for high experience levels unless the evidence is strong.
-4. **Rules:**
-   - Answer the question directly with a number, avoiding "0" entirely.
-## Example 1
-```
-## Curriculum
-I had a degree in computer science. I have worked  years with  MQTT protocol.
-## Question
-How many years of experience do you have with IoT?
-## Answer
-4
-```
-## Example 1
-```
-## Curriculum
-I had a degree in computer science.
-## Question
-How many years of experience do you have with Bash?
-## Answer
-2
-```
-## Example 2
-```
-## Curriculum
-I am a software engineer with 5 years of experience in Swift and Python. I have worked on an AI project.
-## Question
-How many years of experience do you have with AI?
-## Answer
-2
-```
-## Resume:
-```
-{resume_educations}
-{resume_jobs}
-{resume_projects}
-```
-## Question:
-{question}
----
-When responding, consider all available information, including projects, work experience, and academic background, to provide an accurate and well-reasoned answer. Make every effort to infer relevant experience and avoid defaulting to 0 if any related experience can be estimated.
-"""
-try_to_fix_template = """\
-The objective is to fix the text of a form input on a web page.
-## Rules
-- Use the error to fix the original text.
-- The error "Please enter a valid answer" usually means the text is too large, shorten the reply to less than a tweet.
-- For errors like "Enter a whole number between 3 and 30", just need a number.
------
-## Form Question
-{question}
-## Input
-{input}
-## Error
-{error}
-## Fixed Input
-"""

@@ -11,8 +11,13 @@ from src.job_manager.resume_scraper import ResumeScraper
 from src.job_manager.search_customizer import SearchCustomizer
 from src.llm.llm_manager import GPTAnswerer
 from src.logger_config import logger
-from src.pydantic_models.config import SearchConfig, Secrets
+from src.views.config import SearchConfig, Secrets
 from src.utils.utils import load_yaml_file
+
+
+# TODO: check the full job application pipeline
+# TODO: translate all comments and logs to Russian
+# TODO: actualize tests
 
 
 class ConfigError(Exception):
@@ -106,7 +111,7 @@ async def create_and_run_bot(
             logger.warning("Последний поиск был меньше суток назад, завершаем работу")
             return
         await bot.set_resume()
-        await bot.set_search_parameters(parameters)
+        bot.set_search_parameters(parameters)
         bot.set_gpt_answerer(gpt_answerer_component, parameters)
         # bot.set_resume_generator(resume_generator_manager, gpt_resume_genarator)
         await bot.start_apply()

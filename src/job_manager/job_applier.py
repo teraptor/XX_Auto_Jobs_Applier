@@ -9,11 +9,11 @@ from typing import Any, Dict, List, Tuple
 import yaml
 
 from src.app_config import (
-    COVER_LETTER_MODE,
+    SEARCH_MODE,
     MINIMUM_WAIT_TIME_SEC,
     MONKEY_MODE,
-    RESUME_MODE,
     SKILL_STAT_MODE,
+    JOB_IS_INTERESTING_THRESH,
 )
 from src.constants import LAST_RUN_FILE, SEARCH_CONFIG_FILE
 from src.job_manager.playwright_manager import PlaywrightJobManager
@@ -25,6 +25,7 @@ from src.utils.utils import (
     save_yaml_file,
     sleep,
 )
+from src.views.job import Job, JobDescription
 
 search_config = load_yaml_file(SEARCH_CONFIG_FILE)
 FIXED_COVER_LETTER = search_config.get("cover_letter")
@@ -52,7 +53,6 @@ class JobApplier:
     def set_parameters(self, parameters: Dict[str, Any]):
         """Установка параметрок поиска"""
         logger.info("Установка параметров JobApplier")
-        self.user_id = parameters["user_id"]
         self.hh_login = parameters.get("hh_login", "")
         self.hh_password = parameters.get("hh_password", "")
         self.resume_id = parameters["resume_id"]
@@ -77,6 +77,10 @@ class JobApplier:
         self.failed_companies = self._load_companies_from_yaml("failed.yaml")
         # загрузить список вопросов, на которые уже были даны ответы
         self.seen_answers = self._load_data_from_yaml("answers.yaml")
+        # загрузить список просмотренных вакансий
+        self.seen_job_descriptions = self._load_seen_job_descriptions_from_file(
+            "job_descriptions.txt"
+        )
         # загрузить статистику по самым востребованным навыкам в вакансиях
         self.skill_stat = self._load_data_from_yaml("skill_stat.yaml")
         # загрузить кэш с информацией о последнем поиске
@@ -124,21 +128,17 @@ class JobApplier:
         if "employer" in vacancy and vacancy["employer"]:
             job["company_id"] = vacancy["employer"].get("id")
             job["company_name"] = vacancy["employer"]["name"]
-            job["accredited_it_employer"] = vacancy["employer"].get("accredited_it_employer", False)
         else:
             job["company_id"] = None
             job["company_name"] = "Unknown"
-            job["accredited_it_employer"] = False
 
         # Fetch full details via Playwright
         try:
             full_info = await self.manager.get_vacancy_full_info(vacancy["alternate_url"])
-            job["job_description"] = re.sub(r"<[^>]+>", "", full_info.get("description", ""))
-            job["has_test_task"] = False  # Simplified for now, scraping this is harder
+            job = {**job, **full_info}
         except Exception as e:
             logger.error(f"Failed to scrape vacancy details: {e}")
-            job["job_description"] = ""
-
+        job = Job(**job).model_dump()
         return job
 
     def resume_improvement_recommendations(self) -> None:
@@ -157,7 +157,6 @@ class JobApplier:
 
     async def start_applying(self) -> None:
         """Разослать отклики всем работодателям на всех страницах"""
-
         # определяем время старта поиска
         if self.cache.get("last_run"):
             last_run = datetime.fromisoformat(self.cache["last_run"])
@@ -211,10 +210,7 @@ class JobApplier:
         logger.info(f"Откликов отправлено: {self.success_applies_num}")
         logger.info("Завершаем работу.")
         # если поиск прошел успешно - отсылаем отчет о проделанной работе
-        if (
-            not (COVER_LETTER_MODE is True or SKILL_STAT_MODE is True or RESUME_MODE is True)
-            and result != "Error"
-        ):
+        if not (SEARCH_MODE is True or SKILL_STAT_MODE is True) and result != "Error":
             # если хотя бы на одну вакансию откликнулись успешно c момента запуска
             # записываем время последнего поиска и отсылаем отчет
             if self.previous_apply_number < self.success_applies_num:
@@ -236,11 +232,10 @@ class JobApplier:
             apply_result = "Skip", "Вакансия в черном списке"
             logger.warning("Вакансия в черном списке, пропускаем")
             pause(1, 2)
-        elif (not self.hh_login or not self.hh_password) and job.get("has_test_task"):
-            # For now assume has_test_task is checked in apply flow or ignored
-            pass
-
-        is_applied, reason = self._is_already_applied_to_job_or_company(job)
+        elif SEARCH_MODE is True:
+            is_applied, reason = self._job_description_is_already_met(job["vacancy_id"])
+        else:
+            is_applied, reason = self._is_already_applied_to_job_or_company(job)
         if is_applied:
             apply_result = "Skip", reason
             logger.warning(f"Пропускаем вакансию по причине: {reason}")
@@ -250,15 +245,16 @@ class JobApplier:
             self.gpt_answerer.set_job(job)
             if MONKEY_MODE is True:
                 # в 'режиме обезьяны' любая вакансия считается интересной
-                job_is_interesting = True
+                job_is_interesting_data = {"score": 100, "reasoning": "Monkey mode"}
             else:
                 # иначе просить LLM оценить, является ли вакансия интересной или нет
-                job_is_interesting = self.gpt_answerer.job_is_interesting()
+                job_is_interesting_data = self.gpt_answerer.job_is_interesting()
             # откликнуться на вакансию только если она интересна
+            job_is_interesting = job_is_interesting_data["score"] >= JOB_IS_INTERESTING_THRESH
             if job_is_interesting:
-                # обновляем список требуемых для вакансии навыков только если сама вакансия интересна
-                # self._update_skill_stat(self.job_key_skills) # TODO: re-enable scraping skills
-                apply_result = await self.apply_job(vacancy, company_name, company_job_title, job)
+                apply_result = await self.apply_job(
+                    vacancy, company_name, company_job_title, job, job_is_interesting_data
+                )
                 result, reason = apply_result
                 # если вакансия пропускается по причине отсутствия информации, добавить ее в список вакансий,
                 # информация о которых потом будет отправлена клиенту
@@ -272,7 +268,7 @@ class JobApplier:
 
         result, _ = apply_result
         # если находимся в одном из режимов сбора информации - не ведем статистику по вакансиям
-        if COVER_LETTER_MODE is True or SKILL_STAT_MODE is True or RESUME_MODE is True:
+        if SEARCH_MODE is True or SKILL_STAT_MODE is True:
             return "OK"
         # увеличиваем счетчики всех откликов и успешных откликов
         self.applies_num += 1
@@ -312,46 +308,62 @@ class JobApplier:
         return result
 
     async def apply_job(
-        self, vacancy: Dict[str, Any], company_name: str, job_title: str, job: dict
+        self,
+        vacancy: Dict[str, Any],
+        company_name: str,
+        job_title: str,
+        job: dict,
+        job_is_interesting_data: Dict[str, Any],
     ) -> Tuple[str, str]:
         """Откликнуться на вакансию"""
         try:
+            skills = self._process_skill_string(job.get("skills", ""))
             if self.fixed_cover_letter:
                 logger.info(f"Берем готовое сопроводительное письмо:\n'{self.fixed_cover_letter}'")
                 cover_letter_text = self.fixed_cover_letter
-            elif not RESUME_MODE and not SKILL_STAT_MODE:
+            elif not SKILL_STAT_MODE:
                 cover_letter_text = self.gpt_answerer.write_cover_letter()
                 # деанонимизируем информацию
                 cover_letter_text = self.resume_component.deanonymize_personal_information(
                     cover_letter_text
                 )
-                self._save_cover_letter(company_name, cover_letter_text, vacancy["alternate_url"])
-            if COVER_LETTER_MODE is True:
-                # если находимся в режиме написания сопровод. писем - не откликаемся на вакансии,
-                # только сохраняем сгенерированные сопроводительные письма в файл
-                logger.info(
-                    "Находимся в режиме отладки сопрводительных писем - не откликаемся на вакансии"
+                job_description = JobDescription(
+                    job_title=job_title,
+                    company_name=company_name,
+                    vacancy_id=job["vacancy_id"],
+                    link=vacancy["alternate_url"],
+                    skills=skills,
+                    cover_letter=cover_letter_text,
+                    job_score=job_is_interesting_data["score"],
                 )
-                return "Skip", "COVER_LETTER_MODE"
+                self._save_job_description(job_description)
+            if SEARCH_MODE is True:
+                # если находимся в режиме поиска вакансий - не откликаемся на вакансии,
+                # только сохраняем данные о вакансиях + сопроводительные письма в файл
+                self._update_skill_stat(skills)
+                logger.info(
+                    "Находимся в режиме отладки поиска вакансий - не откликаемся на вакансии"
+                )
+                return "Skip", "SEARCH_MODE"
             elif SKILL_STAT_MODE is True:
                 # если находимся в режиме сбора статистики по навыкам - не откликаемся на вакансии,
                 # только сохраняем статистику по навыкам в файл
+                additional_skills = self.gpt_answerer.extract_skills_from_vacancy(
+                    job.get("description", "")
+                )
+                skills.extend(additional_skills)
+                skills = list(set(skills))
+                self._update_skill_stat(skills)
                 logger.info(
                     "Находимся в режиме сбора статистики по навыкам - не откликаемся на вакансии"
                 )
                 return "Skip", "SKILL_STAT_MODE"
-            elif RESUME_MODE is True:
-                # если находимся в режиме резюме - не откликаемся на вакансии,
-                # только сохраняем сгенерированные резюме
-                logger.info("Находимся в режиме резюме - не откликаемся на вакансии")
-                # self.write_and_upload_resume(job, vacancy["alternate_url"]) # Disabled in migration for simplicity
-                return "Skip", "RESUME_MODE"
             else:
                 return await self.manager.apply_to_vacancy(
                     vacancy["alternate_url"],
                     cover_letter_text,
                     self.gpt_answerer,
-                    self.resume_titles,
+                    self.resume_component,
                 )
         except Exception as e:
             tb_str = traceback.format_exc()
@@ -456,23 +468,20 @@ class JobApplier:
             raise
         return output_file
 
-    def _update_skill_stat(self, skills):
+    def _update_skill_stat(self, skills: List[str]) -> None:
         """Обновить статистику по самым востребованным навыкам в вакансии и сохранить ее в файл"""
         for skill in skills:
-            if ";" in skill:
-                processed_skills = self._process_skill_string(skill)
-                for skill in processed_skills:
-                    self.skill_stat[skill] = self.skill_stat.get(skill, 0) + 1
-            else:
-                self.skill_stat[skill] = self.skill_stat.get(skill, 0) + 1
-        self._save_data_to_yaml(self.skill_stat, "skill_stat.yaml")
+            self.skill_stat[skill] = self.skill_stat.get(skill, 0) + 1
+        self.skill_stat = sorted(self.skill_stat.items(), key=lambda x: x[1], reverse=True)
+        self.skill_stat = {k: v for k, v in self.skill_stat}
+        self._save_data_to_yaml(self.skill_stat, "skill_stat.yaml", sort_keys=False)
 
     def _process_skill_string(self, skill_string: str) -> List[str]:
         """Разбить строку с навыками на список навыков"""
         processed_skills = []
-        for part in skill_string.split(";"):
+        for part in skill_string.split(", "):
             cleaned = "".join(char for char in part if char.isalnum() or char.isspace())
-            cleaned = cleaned.strip()
+            cleaned = cleaned.strip().lower()
             if cleaned:
                 processed_skills.append(cleaned)
         return processed_skills
@@ -515,19 +524,26 @@ class JobApplier:
 
         # Проверяем по company_id и/или по названию вакансии
         if company_id and company_id in seen_companies:
-            seen_companies[company_id].append(job_info)
+            self._add_job_info_to_seen_companies(job_info, seen_companies[company_id])
         elif company_name in seen_companies:
-            seen_companies[company_name].append(job_info)
+            self._add_job_info_to_seen_companies(job_info, seen_companies[company_name])
         else:
             if company_id:
                 seen_companies[company_id] = [job_info]
             else:
                 seen_companies[company_name] = [job_info]
 
-        if result == "Success":
-            self._save_company_to_yaml(filename, companies)
-        else:
-            self._save_company_to_yaml(filename, companies)
+        self._save_company_to_yaml(filename, companies)
+
+    def _add_job_info_to_seen_companies(
+        self, job_info: Dict[str, str], company_vacancies: List[Dict[str, str]]
+    ) -> None:
+        """Проверить, не находится ли вакансия в списке уже просмотренных вакансий и если нет, то добавить ее в список"""
+        vacancy_id = job_info["vacancy_id"]
+        for company_vacancy in company_vacancies:
+            if vacancy_id in company_vacancy["vacancy_id"]:
+                return
+        company_vacancies.append(job_info)
 
     def _save_company_to_yaml(self, filename: str, companies: List[Dict[str, str]]) -> None:
         """Сохранить уже просмотренные компании и их вакансии в файл"""
@@ -567,12 +583,17 @@ class JobApplier:
             )
             return data
 
-    def _save_data_to_yaml(self, data: Dict[str, str], filename: str) -> None:
+    def _save_data_to_yaml(
+        self,
+        data: Dict[str, str],
+        filename: str,
+        sort_keys: bool = True,
+    ) -> None:
         """Сохранить данные в файл"""
         output_file = self._define_output_file(filename)
         logger.info(f"Сохраняем данные в файл {filename}")
         try:
-            save_yaml_file(output_file, data)
+            save_yaml_file(output_file, data, sort_keys=sort_keys)
             logger.info(f"Данные успешно сохранены в файл {filename}")
         except Exception:
             tb_str = traceback.format_exc()
@@ -599,25 +620,6 @@ class JobApplier:
             tb_str = traceback.format_exc()
             logger.error(f"Ошибка при загрузке списка данных из файла {filename}\n{tb_str}")
             raise Exception(f"Ошибка при загрузке данных из файла {filename}")
-
-    def _save_cover_letter(self, company_name: str, cover_letter_text: str, job_link: str) -> None:
-        """Сохранить вопрос в файл"""
-        output_file = self._define_output_file("cover_letters.txt")
-        logger.info("Сохраняем новый сопроводительное письмо в текстовый файл")
-        try:
-            with open(output_file, "a", encoding="utf-8") as f:
-                f.write(80 * "=" + "\n")
-                f.write(f"Компания: {company_name}\n")
-                f.write(f"Ссылка: {job_link}\n")
-                f.write("Сопроводительное письмо:\n\n")
-                f.write(cover_letter_text + "\n\n")
-            logger.info("Новое сопроводительное письмо успешно сохранено в текстовый файл")
-        except Exception:
-            tb_str = traceback.format_exc()
-            logger.error(
-                f"Ошибка при сохранении сопроводительного письма в текстовый файл. \n{tb_str}"
-            )
-            raise Exception("Ошибка при сохранении сопроводительного письма в текстовый файл")
 
     def _is_blacklisted(self, company: str) -> bool:
         """Проверить, не находится ли компания в черном списке"""
@@ -651,6 +653,94 @@ class JobApplier:
                         logger.warning("Вакансия уже встречалась, пропускаем")
                         return True, "Вакансия уже встречалась"
         return False, ""
+
+    def _job_description_is_already_met(self, vacancy_id: str) -> Tuple[bool, str]:
+        """Проверить, не находится ли вакансия в списке уже просмотренных вакансий"""
+        for job in self.seen_job_descriptions:
+            if job["vacancy_id"] == vacancy_id:
+                return True, "Вакансия уже встречалась"
+        return False, ""
+
+    def _load_seen_job_descriptions_from_file(self, filename: str) -> List[Dict[str, Any]]:
+        """Получить список уже просмотренных вакансий"""
+        seen_job_descriptions = []
+        try:
+            output_file = self._define_output_file(filename)
+            with open(output_file, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            blocks = content.split(80 * "=")
+            for block in blocks:
+                if not block.strip():
+                    continue
+
+                lines = block.strip().split("\n")
+                job_data = {}
+                cover_letter_lines = []
+                is_cover_letter = False
+
+                for line in lines:
+                    if is_cover_letter:
+                        cover_letter_lines.append(line)
+                        continue
+
+                    if line.startswith("Компания:"):
+                        job_data["company_name"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Вакансия:"):
+                        job_data["job_title"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("ID вакансии:"):
+                        job_data["vacancy_id"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Оценка вакансии:"):
+                        try:
+                            job_data["job_score"] = int(line.split(":", 1)[1].strip())
+                        except ValueError:
+                            job_data["job_score"] = 0
+                    elif line.startswith("Навыки:"):
+                        skills_str = line.split(":", 1)[1].strip()
+                        job_data["skills"] = [s.strip() for s in skills_str.split(",") if s.strip()]
+                    elif line.startswith("Ссылка:"):
+                        job_data["link"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Сопроводительное письмо:"):
+                        is_cover_letter = True
+
+                if cover_letter_lines:
+                    job_data["cover_letter"] = "\n".join(cover_letter_lines).strip()
+
+                if job_data:
+                    seen_job_descriptions.append(JobDescription(**job_data).model_dump())
+
+        except FileNotFoundError:
+            pass
+        except Exception:
+            tb_str = traceback.format_exc()
+            logger.error(f"Ошибка при загрузке списка просмотренных вакансий из файла\n{tb_str}")
+        return seen_job_descriptions
+
+    def _save_job_description(self, job_description: JobDescription) -> None:
+        """Сохранить данные о вакансии и сопроводительное письмо в файл.
+        Сохраняем в обратном порядке, чтобы последние вакансии были в начале файла"""
+        output_file = self._define_output_file("job_descriptions.txt")
+        logger.info("Сохраняем данные о вакансии и сопроводительное письмо в текстовый файл")
+        self.seen_job_descriptions = [job_description.model_dump()] + self.seen_job_descriptions
+        try:
+            with open(output_file, "w", encoding="utf-8") as f:
+                for job in self.seen_job_descriptions:
+                    f.write(80 * "=" + "\n")
+                    f.write(f"Компания: {job['company_name']}\n")
+                    f.write(f"Вакансия: {job['job_title']}\n")
+                    f.write(f"ID вакансии: {job['vacancy_id']}\n")
+                    f.write(f"Оценка вакансии: {job['job_score']}\n")
+                    f.write(f"Навыки: {', '.join(job['skills'])}\n")
+                    f.write(f"Ссылка: {job['link']}\n")
+                    f.write("Сопроводительное письмо:\n\n")
+                    f.write(job["cover_letter"] + "\n\n")
+            logger.info("Новое сопроводительное письмо успешно сохранено в текстовый файл")
+        except Exception:
+            tb_str = traceback.format_exc()
+            logger.error(
+                f"Ошибка при сохранении сопроводительного письма в текстовый файл. \n{tb_str}"
+            )
+            raise Exception("Ошибка при сохранении сопроводительного письма в текстовый файл")
 
     def _sanitize_text(self, text: str) -> str:
         """Очистить текст вопроса/ответа"""
