@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # Redis для FIFO очередей
+  redis:
+    image: redis:7-alpine
+    container_name: xx-autojobs-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - xx-network
+
+  # Minimal API для мониторинга
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: xx-autojobs-api
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - xx-network
+    restart: unless-stopped
+
+  # PostgreSQL для multi-tenant системы
+  postgres:
+    image: postgres:15-alpine
+    container_name: xx-autojobs-postgres
+    environment:
+      POSTGRES_DB: autoapplyer
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - xx-network
+
+  # Worker с Playwright
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: xx-autojobs-worker
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/autoapplyer
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - BROWSER_POOL_SIZE=5
+      - HEADLESS=true
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - xx-network
+    restart: unless-stopped
+    # Для headless mode нужен shm
+    shm_size: '2gb'
+
+volumes:
+  redis-data:
+  postgres-data:
+
+networks:
+  xx-network:
+    driver: bridge

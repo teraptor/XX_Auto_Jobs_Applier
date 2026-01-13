@@ -1,0 +1,30 @@
+# Multi-tenant dependencies для XX_Auto_Jobs_Applier
+
+# Redis для FIFO очередей
+redis[hiredis]>=5.0.1
+redis-py>=5.0.1
+
+# FastAPI для Minimal API
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+
+# Prometheus для метрик
+prometheus-client>=0.19.0
+
+# PostgreSQL (для полной версии)
+asyncpg>=0.29.0
+alembic>=1.13.0
+psycopg2-binary>=2.9.9
+
+# Cryptography для шифрования credentials
+cryptography>=41.0.0
+
+# Утилиты
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+
+# Существующие зависимости проекта (из основного requirements.txt)
+# playwright>=1.40.0
+# langchain>=0.1.0
+# и т.д.
