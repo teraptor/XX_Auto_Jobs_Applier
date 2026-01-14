@@ -311,27 +311,74 @@ class TaskWorker:
             # Create page
             browser_instance.page = await browser_instance.context.new_page()
 
-            # TODO: Call existing job search and apply logic here
-            # This is where you would integrate with:
-            # - src/job_manager/job_applier.py
-            # - src/job_manager/job_search.py
-            #
-            # For now, return a mock result
+            # Integrate with existing job search and apply logic
+            logger.info("  Starting job search and apply process...")
 
-            applications_processed = 0
-            applications_success = 0
-            applications_failed = 0
+            # Import job manager components
+            from src.job_manager.bot_facade import BotFacade
+            from src.job_manager.playwright_manager import PlaywrightJobManager
+            from src.views import SearchConfig, Job, ApplicationResponse
 
-            # Mock: Simulate processing
-            await asyncio.sleep(2)
+            # Load search configuration from database
+            search_config_repo = await storage.get_repository('search_config')
+            search_config_data = await search_config_repo.get_active(context.tenant_id, context.user_id)
 
-            # Save browser session
-            # TODO: Extract cookies and localStorage
-            # session_state = {
-            #     'cookies': await browser_instance.context.cookies(),
-            #     'localStorage': {}  # Extract from page
-            # }
-            # await storage.save_browser_session(session_state)
+            if not search_config_data:
+                raise ValueError("No active search configuration found for user")
+
+            # Convert database config to SearchConfig model
+            search_config = SearchConfig(**search_config_data['config'])
+
+            # Get HH credentials
+            hh_login, hh_password = await credentials.get_hh_credentials()
+
+            # Initialize PlaywrightJobManager with existing page
+            playwright_manager = PlaywrightJobManager(
+                page=browser_instance.page,
+                config=search_config,
+                storage_manager=storage  # Use storage adapter instead of YAML
+            )
+
+            # Restore browser session if available
+            saved_session = await storage.get_browser_session()
+            if saved_session and saved_session.get('cookies'):
+                logger.info("  Restoring browser session from database")
+                await browser_instance.context.add_cookies(saved_session['cookies'])
+
+            # Initialize BotFacade with tenant context
+            bot_facade = BotFacade(
+                playwright_manager=playwright_manager,
+                storage_adapter=storage,
+                llm_model=os.getenv("LLM_MODEL", "gemini-1.5-flash"),
+                context=context
+            )
+
+            # Login if needed
+            if not saved_session:
+                logger.info("  Logging into HH.ru...")
+                login_success = await bot_facade.login(hh_login, hh_password)
+                if not login_success:
+                    raise ValueError("Failed to login to HH.ru")
+
+            # Run job search and apply
+            logger.info("  Running job search and apply...")
+            apply_result = await bot_facade.start_job_search_and_apply(
+                max_applications=search_config.max_applies_num,
+                search_filters=search_config.search_filters
+            )
+
+            # Save browser session for next run
+            cookies = await browser_instance.context.cookies()
+            session_state = {
+                'cookies': cookies,
+                'saved_at': datetime.utcnow().isoformat()
+            }
+            await storage.save_browser_session(session_state)
+
+            # Parse results
+            applications_processed = apply_result.get('total_processed', 0)
+            applications_success = apply_result.get('successful_applications', 0)
+            applications_failed = apply_result.get('failed_applications', 0)
 
             result = {
                 'task_id': task_id,
@@ -340,11 +387,13 @@ class TaskWorker:
                 'applications_processed': applications_processed,
                 'applications_success': applications_success,
                 'applications_failed': applications_failed,
+                'vacancies_viewed': apply_result.get('vacancies_viewed', 0),
+                'skipped_count': apply_result.get('skipped_count', 0),
                 'completed_at': datetime.utcnow().isoformat(),
-                'message': 'Job search and apply completed (mock implementation)'
+                'message': f'Job search completed. Applied to {applications_success} positions.'
             }
 
-            logger.info(f"  ✅ Processed {applications_processed} applications")
+            logger.info(f"  ✅ Processed {applications_processed} applications ({applications_success} successful)")
 
             return result
 
